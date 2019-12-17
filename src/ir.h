@@ -96,6 +96,8 @@ struct Const {
 
   Location loc;
   Type type;
+
+  bool isExpectedNan = false;
   union {
     uint32_t u32;
     uint64_t u64;
@@ -103,6 +105,7 @@ struct Const {
     uint64_t f64_bits;
     uintptr_t ref_bits;
     v128 vec128;
+    ExpectedNan expected;
   };
 
  private:
@@ -1045,8 +1048,6 @@ enum class CommandType {
   AssertUninstantiable,
   AssertReturn,
   AssertReturnFunc,
-  AssertReturnCanonicalNan,
-  AssertReturnArithmeticNan,
   AssertTrap,
   AssertExhaustion,
 
@@ -1086,10 +1087,6 @@ class ActionCommandBase : public CommandMixin<TypeEnum> {
 };
 
 typedef ActionCommandBase<CommandType::Action> ActionCommand;
-typedef ActionCommandBase<CommandType::AssertReturnCanonicalNan>
-    AssertReturnCanonicalNanCommand;
-typedef ActionCommandBase<CommandType::AssertReturnArithmeticNan>
-    AssertReturnArithmeticNanCommand;
 
 class RegisterCommand : public CommandMixin<CommandType::Register> {
  public:

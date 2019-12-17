@@ -223,8 +223,6 @@ bool IsCommand(TokenTypePair pair) {
     case TokenType::AssertMalformed:
     case TokenType::AssertReturn:
     case TokenType::AssertReturnFunc:
-    case TokenType::AssertReturnArithmeticNan:
-    case TokenType::AssertReturnCanonicalNan:
     case TokenType::AssertTrap:
     case TokenType::AssertUnlinkable:
     case TokenType::Get:
@@ -703,7 +701,7 @@ Result WastParser::ParseValueTypeList(TypeVector* out_type_list) {
 Result WastParser::ParseRefType(Type* out_type) {
   WABT_TRACE(ParseRefType);
   if (!PeekMatch(TokenType::ValueType)) {
-    return ErrorExpected({"anyref", "funcref"});
+    return ErrorExpected({"anyref", "funcref", "nullref"});
   }
 
   Token token = Consume();
@@ -1999,7 +1997,24 @@ Result WastParser::ParseSimdV128Const(Const* const_, TokenType token_type) {
   return Result::Ok;
 }
 
-Result WastParser::ParseConst(Const* const_) {
+Result WastParser::ParseExpectedNan(ExpectedNan* expected) {
+  WABT_TRACE(ParseExpectedNan);
+  TokenType token_type = Peek();
+  switch (token_type) {
+    case TokenType::NanArithmetic:
+      *expected = ExpectedNan::Arithmetic;
+      break;
+    case TokenType::NanCanonical:
+      *expected = ExpectedNan::Canonical;
+      break;
+    default:
+      return Result::Error;
+  }
+  Consume();
+  return Result::Ok;
+}
+
+Result WastParser::ParseConst(Const* const_, bool is_assert_result) {
   WABT_TRACE(ParseConst);
   Token token = Consume();
   Opcode opcode = token.opcode();
@@ -2022,6 +2037,9 @@ Result WastParser::ParseConst(Const* const_) {
       end = sv.end();
       break;
     }
+    case TokenType::NanArithmetic:
+    case TokenType::NanCanonical:
+      break;
     default:
       return ErrorExpected({"a numeric literal"}, "123, -45, 6.7e8");
     }
@@ -2043,11 +2061,19 @@ Result WastParser::ParseConst(Const* const_) {
 
     case Opcode::F32Const:
       const_->type = Type::F32;
+      if (is_assert_result && ParseExpectedNan(&const_->expected) == Result::Ok) {
+        const_->isExpectedNan = true;
+        break;
+      }
       result = ParseFloat(literal.type, s, end, &const_->f32_bits);
       break;
 
     case Opcode::F64Const:
       const_->type = Type::F64;
+      if (is_assert_result && ParseExpectedNan(&const_->expected) == Result::Ok) {
+        const_->isExpectedNan = true;
+        break;
+      }
       result = ParseDouble(literal.type, s, end, &const_->f64_bits);
       break;
 
@@ -2122,7 +2148,7 @@ Result WastParser::ParseHostRef(Const* const_) {
   return Result::Ok;
 }
 
-Result WastParser::ParseConstList(ConstVector* consts) {
+Result WastParser::ParseConstList(ConstVector* consts, bool is_assert_result) {
   WABT_TRACE(ParseConstList);
   while (PeekMatchLpar(TokenType::Const) || PeekMatchLpar(TokenType::RefNull) ||
          PeekMatchLpar(TokenType::RefHost)) {
@@ -2130,7 +2156,7 @@ Result WastParser::ParseConstList(ConstVector* consts) {
     Const const_;
     switch (Peek()) {
       case TokenType::Const:
-        CHECK_RESULT(ParseConst(&const_));
+        CHECK_RESULT(ParseConst(&const_, is_assert_result));
         break;
       case TokenType::RefNull: {
         auto token = Consume();
@@ -2430,12 +2456,6 @@ Result WastParser::ParseCommand(Script* script, CommandPtr* out_command) {
     case TokenType::AssertReturnFunc:
       return ParseAssertReturnFuncCommand(out_command);
 
-    case TokenType::AssertReturnArithmeticNan:
-      return ParseAssertReturnArithmeticNanCommand(out_command);
-
-    case TokenType::AssertReturnCanonicalNan:
-      return ParseAssertReturnCanonicalNanCommand(out_command);
-
     case TokenType::AssertTrap:
       return ParseAssertTrapCommand(out_command);
 
@@ -2482,7 +2502,7 @@ Result WastParser::ParseAssertReturnCommand(CommandPtr* out_command) {
   EXPECT(AssertReturn);
   auto command = MakeUnique<AssertReturnCommand>();
   CHECK_RESULT(ParseAction(&command->action));
-  CHECK_RESULT(ParseConstList(&command->expected));
+  CHECK_RESULT(ParseConstList(&command->expected, /*is_assert_result=*/true));
   EXPECT(Rpar);
   *out_command = std::move(command);
   return Result::Ok;
@@ -2497,20 +2517,6 @@ Result WastParser::ParseAssertReturnFuncCommand(CommandPtr* out_command) {
   EXPECT(Rpar);
   *out_command = std::move(command);
   return Result::Ok;
-}
-
-Result WastParser::ParseAssertReturnArithmeticNanCommand(
-    CommandPtr* out_command) {
-  WABT_TRACE(ParseAssertReturnArithmeticNanCommand);
-  return ParseAssertActionCommand<AssertReturnArithmeticNanCommand>(
-      TokenType::AssertReturnArithmeticNan, out_command);
-}
-
-Result WastParser::ParseAssertReturnCanonicalNanCommand(
-    CommandPtr* out_command) {
-  WABT_TRACE(ParseAssertReturnCanonicalNanCommand);
-  return ParseAssertActionCommand<AssertReturnCanonicalNanCommand>(
-      TokenType::AssertReturnCanonicalNan, out_command);
 }
 
 Result WastParser::ParseAssertTrapCommand(CommandPtr* out_command) {

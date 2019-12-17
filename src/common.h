@@ -214,12 +214,15 @@ enum class Type : int32_t {
   V128 = -0x05,     // 0x7b
   Funcref = -0x10,  // 0x70
   Anyref = -0x11,   // 0x6f
-  Exnref = -0x18,   // 0x68
+  Nullref = -0x18,  // 0x68
+  // The exceptions proposal currently specified -0x18 here but that slot also
+  // got used by reference-types for null ref.
+  // TODO(https://github.com/WebAssembly/exception-handling/issues/92)
+  Exnref = -0x19,   // 0x69
   Func = -0x20,     // 0x60
   Void = -0x40,     // 0x40
   ___ = Void,       // Convenient for the opcode table in opcode.h
   Any = 0,          // Not actually specified, but useful for type-checking
-  Nullref = 1,      // Not actually specified, but used in testing and type-checking
   Hostref = 2,      // Not actually specified, but used in testing and type-checking
   I8 = 3,           // Not actually specified, but used internally with load/store
   I8U = 4,          // Not actually specified, but used internally with load/store
@@ -228,6 +231,12 @@ enum class Type : int32_t {
   I32U = 7,         // Not actually specified, but used internally with load/store
 };
 typedef std::vector<Type> TypeVector;
+
+// Used in test asserts for special expected values "nan:canonical" and "nan:arithmetic"
+enum class ExpectedNan {
+  Canonical,
+  Arithmetic,
+};
 
 // Matches binary format, do not change.
 enum SegmentFlags : uint8_t {
@@ -444,6 +453,7 @@ static WABT_INLINE TypeVector GetInlineTypeVector(Type type) {
     case Type::V128:
     case Type::Funcref:
     case Type::Anyref:
+    case Type::Nullref:
     case Type::Exnref:
       return TypeVector(&type, &type + 1);
 

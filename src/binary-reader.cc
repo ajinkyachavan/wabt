@@ -398,9 +398,8 @@ bool BinaryReader::IsConcreteType(Type type) {
       return options_.features.exceptions_enabled();
 
     case Type::Anyref:
-      return options_.features.reference_types_enabled();
-
     case Type::Funcref:
+    case Type::Nullref:
       return options_.features.reference_types_enabled();
 
     default:
@@ -525,9 +524,10 @@ Result BinaryReader::ReadInitExpr(Index index, bool require_i32) {
 
 Result BinaryReader::ReadTable(Type* out_elem_type, Limits* out_elem_limits) {
   CHECK_RESULT(ReadType(out_elem_type, "table elem type"));
-  ERROR_UNLESS(
-      *out_elem_type == Type::Funcref || *out_elem_type == Type::Anyref,
-      "table elem type must by funcref or anyref");
+  ERROR_UNLESS(*out_elem_type == Type::Funcref ||
+                   *out_elem_type == Type::Anyref ||
+                   *out_elem_type == Type::Nullref,
+               "table elem type must be a ref type (e.g. funcref)");
 
   uint32_t flags;
   uint32_t initial;
